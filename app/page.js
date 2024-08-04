@@ -1,152 +1,256 @@
+
+
 'use client'
 
-import Image from "next/image";
-import {useState, useEffect} from 'react'
-import {firestore} from '../firebase'
-import {Box, Typography, Modal, Stack, TextField, Button} from '@mui/material'
-import { getDocs, query, collection, doc, deleteDoc } from 'firebase/firestore';
-
-import { getDoc } from 'firebase/firestore';
-import { updateDoc } from 'firebase/firestore';
-import { setDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Modal, Stack, TextField, Button, Card, CardContent, Container, Grid, AppBar, Toolbar, IconButton, CircularProgress } from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { firestore } from '../firebase';
+import { getDocs, query, collection, doc, deleteDoc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import ImageCapture from './ImageCapture';
+import { Logout } from '@mui/icons-material';
+import Auth from './Auth';
 
-// import styles from "./page.module.css";
+const StyledBox = styled(Box)(({ theme }) => ({
+  minHeight: '100vh',
+  backgroundImage: 'url("/pantry_bg.jpg")',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  backgroundAttachment: 'fixed',
+  display: 'flex',
+  flexDirection: 'column',
+}));
+
+const GlassCard = styled(Card)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.8)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: theme.shape.borderRadius,
+  transition: 'none',
+
+}));
+
+const ItemCard = styled(Card)(({ theme }) => ({
+  // transition: 'none',
+  transition: 'transform 0.2s, box-shadow 0.2s',
+  '&:hover': {
+    transform: 'scale(1.02)',
+    boxShadow: theme.shadows[3],
+  },
+}));
 
 export default function Home() {
-  const [inventory, setInventory] = useState([])
-  const [open, setOpen] = useState(false)
-  const [itemName, setItemName] = useState("")
+  const [inventory, setInventory] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [itemName, setItemName] = useState("");
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const auth = getAuth();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [auth]);
+
+  useEffect(() => {
+    if (user) {
+      updateInventory();
+    }
+  }, [user]);
 
   const updateInventory = async () => {
-    // const snapshot = await firestore.collection('inventory').get() // Created by Vscode
-    // const data = snapshot.docs.map(doc => doc.data())
-    // setInventory(data)
-    const snapshot = query(collection(firestore, 'inventory'))
-    const docs = await getDocs(snapshot)
-    const inventoryList = []
+    if (!auth.currentUser) return;
 
-    docs.forEach((doc) => {
+    const userInventoryRef = collection(firestore, 'users', auth.currentUser.uid, 'inventory');
+    const snapshot = await getDocs(userInventoryRef);
+    const inventoryList = [];
+
+    snapshot.forEach((doc) => {
       inventoryList.push({
         name: doc.id,
         ...doc.data(),
-      })
-    })
-    setInventory(inventoryList)
-  }
+      });
+    });
+    setInventory(inventoryList);
+  };
 
   const removeItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    if (!auth.currentUser) return;
+
+    const itemRef = doc(firestore, 'users', auth.currentUser.uid, 'inventory', item);
+    const docSnap = await getDoc(itemRef);
 
     if (docSnap.exists()) {
-      const {quantity} = docSnap.data()
+      const { quantity } = docSnap.data();
 
       if (quantity === 1) {
-        await deleteDoc(docRef)
+        await deleteDoc(itemRef);
       } else {
-        await updateDoc(docRef, {
+        await updateDoc(itemRef, {
           quantity: quantity - 1
-        })
+        });
       }
     }
-    await updateInventory()
-  }
+    await updateInventory();
+  };
 
   const addItem = async (item) => {
-    const docRef = doc(collection(firestore, 'inventory'), item)
-    const docSnap = await getDoc(docRef)
+    if (!auth.currentUser) return;
+
+    const itemRef = doc(firestore, 'users', auth.currentUser.uid, 'inventory', item);
+    const docSnap = await getDoc(itemRef);
 
     if (docSnap.exists()) {
-      const {quantity} = docSnap.data()
-
-        await updateDoc(docRef, {
-          quantity: quantity + 1
-        })
-      } else {
-        await setDoc(docRef, {
-          quantity: 1
-        })
-      }
-      await updateInventory()
+      const { quantity } = docSnap.data();
+      await updateDoc(itemRef, {
+        quantity: quantity + 1
+      });
+    } else {
+      await setDoc(itemRef, {
+        quantity: 1
+      });
     }
-    
-  const handleClassification = (itemName) => {
-    setItemName(itemName);
+    await updateInventory();
+  };
+
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
+  const handleClassification = (classifiedItemName) => {
+    setItemName(classifiedItemName);
     handleOpen();
   };
 
-  const handleOpen = () => {
-    setOpen(true)
+  const handleLogout = () => {
+    signOut(auth).catch((error) => console.error('Error signing out:', error));
+  };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
   }
 
-  const handleClose = () => {
-    setOpen(false)
+  if (!user) {
+    return <Auth onLogin={() => {}} />;
   }
-
-  useEffect(() => {
-    updateInventory()
-  }, [])
 
   return (
-    <Box width="100vw " height="100vh" display='flex' flexDirection="column" justifyContent='center' alignItems='center' gap={2}>
+    <StyledBox>
+      <AppBar position="static" color="transparent" elevation={0}>
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, color: 'grey' }}>
+            RoboInventory
+          </Typography>
+          <IconButton color="inherit" onClick={handleLogout}>
+            <Logout />
+          </IconButton>
+        </Toolbar>
+      </AppBar>
+      <Container maxWidth="lg" sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <Box py={4}>
+          <Typography variant="h2" align="center" gutterBottom sx={{ color: 'white', textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
+            MY PANTRY
+          </Typography>
+          
+          <Grid container spacing={3} justifyContent="center" sx={{ mb: 4 }}>
+            <Grid item>
+            <Button
+            variant="contained"
+            onClick={handleOpen}
+            sx={{
+              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              color: 'black',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0.1, 0.1)', 
+              },
+            }}
+          >
+            Add Item Manually
+          </Button>
+            </Grid>
+            <Grid item>
+              <ImageCapture onClassification={handleClassification} />
+            </Grid>
+          </Grid>
+
+          <GlassCard>
+            <CardContent>
+              <Typography variant="h4" gutterBottom>
+                Inventory Items
+              </Typography>
+              <Grid container spacing={3}>
+                {inventory.map(({ name, quantity }) => (
+                  <Grid item xs={12} sm={6} md={4} key={name}>
+                    <ItemCard variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          {name.charAt(0).toUpperCase() + name.slice(1)}
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary">
+                          Quantity: {quantity}
+                        </Typography>
+                        <Box mt={2}>
+                          <Button variant="outlined" onClick={() => addItem(name)} sx={{ mr: 1 }}>
+                            Add
+                          </Button>
+                          <Button variant="outlined" color="secondary" onClick={() => removeItem(name)}>
+                            Remove
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </ItemCard>
+                  </Grid>
+                ))}
+              </Grid>
+            </CardContent>
+          </GlassCard>
+        </Box>
+      </Container>
+
       <Modal open={open} onClose={handleClose}>
-        <Box position='absolute' top='50%' left='50%' sx={{transform:'translate(-50%, -50%)'}} width={400} bgcolor='white' border='2px solid #000' boxShadow={24} p={4} display='flex' flexDirection='column' gap={3}> 
-        <Typography variant='h6'>Add Item</Typography>
-        <Stack width='100%' direction='row' spacing={2}>
-          <TextField variant='outlined' fullWidth value={itemName} onChange={(e) => setItemName(e.target.value)}/>
-          <Button variant='outlined' onClick={() => {
-            addItem(itemName) 
-            setItemName('') 
-            handleClose()
-            }}>Add</Button> 
-        </Stack>
+        <Box sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 400,
+          bgcolor: 'background.paper',
+          boxShadow: 24,
+          p: 4,
+          borderRadius: 2,
+        }}>
+          <Typography variant="h6" gutterBottom>Add Item</Typography>
+          <Stack direction="row" spacing={2}>
+            <TextField
+              variant="outlined"
+              fullWidth
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              placeholder="Enter item name"
+            />
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (itemName.trim()) {
+                  addItem(itemName.trim());
+                  setItemName('');
+                  handleClose();
+                }
+              }}
+            >
+              Add
+            </Button>
+          </Stack>
         </Box>
       </Modal>
-      
-      {/* <Typography variant='h1'>Inventory Management</Typography> */}
-      {/* {
-        inventory.map((item) => {
-          return (
-            <Box key={item.name}>
-              <Typography variant='h2'>{item.name}</Typography>
-              <Typography variant='h3'>{item.quantity}</Typography>
-            </Box>
-          )
-        })
-      } */}
-
-      {/* <Button variant='contained' onClick={handleOpen}>Add Item</Button> */}
-      <Button variant='contained' onClick={() => {
-        handleOpen()
-      }}>Add Item</Button>
-
-      <Box border='1px solid #333'>
-        <Box width='800px' height='100px' bgcolor="#ADD8E6" display='flex' alignItems='center' justifyContent='center'>
-          <Typography variant='h2' color='#333'>Inventory Items</Typography>
-        </Box>
-      </Box>
-
-      <Stack width='800px' heigh='300px' spacing={2} overflow='auto'>
-        {inventory.map(({name, quantity}) => (
-          <Box key={name} width='100%' minHeight='150px' display='flex' alignItems='center' justifyContent='space-between' bgcolor='#f0f0f0' padding={5}>
-            <Typography variant='h3' color ='#333' textAlign='center'>
-              {name.charAt(0).toUpperCase() + name.slice(1)}
-            </Typography>
-
-            <Typography variant='h3' color ='#333' textAlign='center'>
-              {quantity}
-            </Typography>
-
-            <Stack direction='row' spacing={2}></Stack>
-
-            <Button variant='contained' onClick={() => addItem(name)}>Add</Button>
-            <Button variant='contained' onClick={() => removeItem(name)}>Remove</Button>
-          </Box>
-        
-        ))}
-      </Stack>
-
-    </Box>
+    </StyledBox>
   );
 }
+
