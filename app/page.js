@@ -9,6 +9,7 @@ import { getDocs, query, collection, doc, deleteDoc } from 'firebase/firestore';
 import { getDoc } from 'firebase/firestore';
 import { updateDoc } from 'firebase/firestore';
 import { setDoc } from 'firebase/firestore';
+import ImageCapture from './ImageCapture';
 
 // import styles from "./page.module.css";
 
@@ -70,7 +71,10 @@ export default function Home() {
       await updateInventory()
     }
     
-  
+  const handleClassification = (itemName) => {
+    setItemName(itemName);
+    handleOpen();
+  };
 
   const handleOpen = () => {
     setOpen(true)
@@ -135,7 +139,7 @@ export default function Home() {
             </Typography>
 
             <Stack direction='row' spacing={2}></Stack>
-            
+
             <Button variant='contained' onClick={() => addItem(name)}>Add</Button>
             <Button variant='contained' onClick={() => removeItem(name)}>Remove</Button>
           </Box>
